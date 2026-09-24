@@ -1,0 +1,15 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
+# Backend
+backend/coverage.out
+backend/coverage.html
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
