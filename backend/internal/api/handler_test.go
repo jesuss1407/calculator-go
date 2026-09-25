@@ -55,9 +55,12 @@ func TestCalculate(t *testing.T) {
 		{name: "missing b", body: `{"operation":"add","a":2}`, wantStatus: http.StatusBadRequest, wantBody: missingOperand},
 		{name: "null a", body: `{"operation":"add","a":null,"b":3}`, wantStatus: http.StatusBadRequest, wantBody: missingOperand},
 		{name: "sqrt with b", body: `{"operation":"sqrt","a":16,"b":2}`, wantStatus: http.StatusBadRequest, wantBody: sqrtOperands},
-		{name: "sqrt without a", body: `{"operation":"sqrt"}`, wantStatus: http.StatusBadRequest, wantBody: sqrtOperands},
+		{name: "sqrt without a", body: `{"operation":"sqrt"}`, wantStatus: http.StatusBadRequest, wantBody: `{"error":"a is required"}`},
 		{name: "missing operation", body: `{"a":2,"b":3}`, wantStatus: http.StatusBadRequest, wantBody: unknownOp},
 		{name: "unknown operation", body: `{"operation":"modulo","a":2,"b":3}`, wantStatus: http.StatusBadRequest, wantBody: unknownOp},
+		// The operation is checked before the operands, so these report the real problem.
+		{name: "unknown operation with missing b", body: `{"operation":"modulo","a":1}`, wantStatus: http.StatusBadRequest, wantBody: unknownOp},
+		{name: "operation is case-sensitive", body: `{"operation":"SQRT","a":4}`, wantStatus: http.StatusBadRequest, wantBody: unknownOp},
 
 		// valid request, but the math has no answer
 		{name: "division by zero", body: `{"operation":"divide","a":1,"b":0}`, wantStatus: http.StatusUnprocessableEntity, wantBody: `{"error":"cannot divide by zero"}`},

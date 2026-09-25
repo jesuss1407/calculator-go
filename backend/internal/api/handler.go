@@ -47,9 +47,17 @@ func handleCalculate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "request body must contain a single JSON object")
 		return
 	}
+
+	// Check the operation first, so the operand messages below can rely on it.
 	op := calculator.Operation(req.Operation)
 	switch {
-	case op.IsUnary() && (req.A == nil || req.B != nil):
+	case !op.IsValid():
+		writeError(w, http.StatusBadRequest, calculator.ErrUnknownOperation.Error())
+		return
+	case op.IsUnary() && req.A == nil:
+		writeError(w, http.StatusBadRequest, "a is required")
+		return
+	case op.IsUnary() && req.B != nil:
 		writeError(w, http.StatusBadRequest, string(op)+" takes only a")
 		return
 	case !op.IsUnary() && (req.A == nil || req.B == nil):
@@ -66,8 +74,6 @@ func handleCalculate(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err == nil:
 		writeJSON(w, http.StatusOK, calculateResponse{Result: result})
-	case errors.Is(err, calculator.ErrUnknownOperation):
-		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, calculator.ErrDivisionByZero),
 		errors.Is(err, calculator.ErrNotRealNumber),
 		errors.Is(err, calculator.ErrResultOutOfRange):

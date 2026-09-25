@@ -38,6 +38,8 @@ describe('formatNumber', () => {
     [123456789012345, '123456789012345'],
     [1e21, '1e+21'],
     [1e-7, '1e-7'],
+    [Number.MAX_VALUE, '1.7976931348623157e+308'],
+    [-Number.MAX_VALUE, '-1.7976931348623157e+308'],
   ])('formats %d as %j', (value, expected) => {
     expect(formatNumber(value)).toBe(expected)
   })

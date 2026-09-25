@@ -29,6 +29,15 @@ var (
 	ErrResultOutOfRange = errors.New("result is out of range")
 )
 
+// IsValid reports whether op is a supported operation.
+func (op Operation) IsValid() bool {
+	switch op {
+	case Add, Subtract, Multiply, Divide, Power, Sqrt, Percentage:
+		return true
+	}
+	return false
+}
+
 // IsUnary reports whether op uses only the first operand.
 func (op Operation) IsUnary() bool {
 	return op == Sqrt

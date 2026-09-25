@@ -57,6 +57,8 @@ test('opens and closes the help popup', async ({ page }) => {
 
 test('fits a 320px-wide screen with full-size touch targets', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 })
+  // Waits for React to render all seven buttons, so the checks below can't pass on an empty page.
+  await expect(page.getByRole('radio')).toHaveCount(7)
 
   const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth)
   expect(pageWidth, 'page scrolls horizontally').toBeLessThanOrEqual(320)

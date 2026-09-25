@@ -21,5 +21,7 @@ export function parseNumber(input: string): ParseResult {
 // Rounds to 15 significant digits (as spreadsheets do) to hide floating-point
 // noise such as 0.1 + 0.2 = 0.30000000000000004.
 export function formatNumber(value: number): string {
-  return String(Number(value.toPrecision(15)))
+  const rounded = Number(value.toPrecision(15))
+  // Rounding a value next to the float64 maximum can overflow to Infinity; show it as-is then.
+  return String(Number.isFinite(rounded) ? rounded : value)
 }

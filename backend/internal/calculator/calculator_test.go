@@ -99,6 +99,24 @@ func TestCalculate(t *testing.T) {
 	}
 }
 
+func TestIsValid(t *testing.T) {
+	for _, op := range []Operation{Add, Subtract, Multiply, Divide, Power, Sqrt, Percentage} {
+		if !op.IsValid() {
+			t.Errorf("Operation(%q).IsValid() = false, want true", op)
+		}
+		// IsValid and Calculate each list the operations; make sure they agree.
+		if _, err := Calculate(op, 4, 2); errors.Is(err, ErrUnknownOperation) {
+			t.Errorf("Calculate(%q, 4, 2) = ErrUnknownOperation, but IsValid says it is supported", op)
+		}
+	}
+
+	for _, op := range []Operation{"modulo", "", "ADD"} {
+		if op.IsValid() {
+			t.Errorf("Operation(%q).IsValid() = true, want false", op)
+		}
+	}
+}
+
 func TestIsUnary(t *testing.T) {
 	tests := []struct {
 		op   Operation
