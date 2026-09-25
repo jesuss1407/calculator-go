@@ -5,6 +5,8 @@
 # Build output and reports are regenerated inside the image.
 frontend/dist
 frontend/coverage
+frontend/playwright-report
+frontend/test-results
 backend/coverage.out
 backend/coverage.html
 

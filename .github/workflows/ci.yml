@@ -90,7 +90,7 @@ jobs:
         run: npm run build
 
   docker:
-    name: Docker image
+    name: Docker image and E2E
     runs-on: ubuntu-latest
     needs: [backend, frontend]
 
@@ -104,12 +104,11 @@ jobs:
       - name: Build image
         run: docker build -t calculator .
 
-      - name: Smoke test the container
+      # The container keeps running for the smoke and E2E steps. No --rm, so its logs
+      # survive a crash; the runner is discarded after the job anyway.
+      - name: Start container
         run: |
-          docker run -d --rm --name calculator -p 8080:8080 calculator
-
-          # Always print logs and clean up the container.
-          trap 'docker logs calculator 2>/dev/null || true; docker rm -f calculator >/dev/null 2>&1 || true' EXIT
+          docker run -d --name calculator -p 8080:8080 calculator
 
           # Wait for the server to become ready.
           curl -sf \
@@ -119,6 +118,9 @@ jobs:
             http://localhost:8080/health
           echo
 
+      # Quick curl checks fail fast, before a minute is spent installing browsers.
+      - name: Smoke test the container
+        run: |
           # Verify that the built frontend is being served.
           page=$(curl -sf http://localhost:8080/)
           grep -q '<title>Calculator</title>' <<< "$page"
@@ -132,3 +134,34 @@ jobs:
 
           echo "calculate: $result"
           test "$result" = '{"result":5}'
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # Runs against the container started above (the default BASE_URL, port 8080).
+      - name: E2E tests
+        working-directory: frontend
+        run: npm run e2e
+
+      - name: Container logs
+        if: always()
+        run: docker logs calculator || true
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7

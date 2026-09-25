@@ -11,6 +11,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Only unit and component tests; the Playwright specs in e2e/ run with `npm run e2e`.
+    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
     setupFiles: './src/setupTests.ts',
     coverage: {
