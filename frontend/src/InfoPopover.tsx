@@ -13,8 +13,8 @@ export function InfoPopover() {
         <h2>How to use</h2>
         <ol>
           <li>Enter the first number.</li>
-          <li>Pick an operation: + − × ÷</li>
-          <li>Enter the second number and press Calculate or Enter.</li>
+          <li>Pick an operation: + − × ÷ xʸ √ %. With %, 10 and 200 give 10% of 200 = 20.</li>
+          <li>Enter the second number (not needed for √) and press Calculate or Enter.</li>
         </ol>
 
         <h2 id="info-valid">Valid numbers</h2>

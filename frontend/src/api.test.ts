@@ -27,6 +27,17 @@ describe('calculate', () => {
     )
   })
 
+  it('sends no b for square root', async () => {
+    const fetchMock = mockFetch(async () => Response.json({ result: 3 }))
+
+    await expect(calculate('sqrt', 9)).resolves.toBe(3)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/calculate',
+      expect.objectContaining({ body: '{"operation":"sqrt","a":9}' }),
+    )
+  })
+
   it('throws the error message returned by the server', async () => {
     mockFetch(async () => Response.json({ error: 'cannot divide by zero' }, { status: 422 }))
 

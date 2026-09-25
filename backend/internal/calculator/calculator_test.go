@@ -41,6 +41,34 @@ func TestCalculate(t *testing.T) {
 		{name: "divide zero by zero", op: Divide, a: 0, b: 0, wantErr: ErrDivisionByZero},
 		{name: "divide by negative zero", op: Divide, a: 1, b: negativeZero, wantErr: ErrDivisionByZero},
 
+		// power
+		{name: "power", op: Power, a: 2, b: 10, want: 1024},
+		{name: "power with negative exponent", op: Power, a: 2, b: -1, want: 0.5},
+		{name: "power of negative base with integer exponent", op: Power, a: -2, b: 3, want: -8},
+		{name: "power with fractional exponent", op: Power, a: 9, b: 0.5, want: 3},
+		{name: "zero to the power of zero", op: Power, a: 0, b: 0, want: 1},
+		{name: "zero to a negative power", op: Power, a: 0, b: -1, wantErr: ErrDivisionByZero},
+		{name: "negative base with fractional exponent", op: Power, a: -4, b: 0.5, wantErr: ErrNotRealNumber},
+		{name: "cube root of negative is not supported", op: Power, a: -8, b: 1.0 / 3, wantErr: ErrNotRealNumber},
+		{name: "power overflow", op: Power, a: 10, b: 400, wantErr: ErrResultOutOfRange},
+
+		// square root (unary: b is ignored)
+		{name: "sqrt", op: Sqrt, a: 16, want: 4},
+		{name: "sqrt of non-square", op: Sqrt, a: 2, want: 1.4142135623730951},
+		{name: "sqrt of zero", op: Sqrt, a: 0, want: 0},
+		{name: "sqrt ignores b", op: Sqrt, a: 9, b: 123, want: 3},
+		{name: "sqrt of negative", op: Sqrt, a: -4, wantErr: ErrNotRealNumber},
+
+		// percentage: a% of b
+		{name: "percentage", op: Percentage, a: 10, b: 200, want: 20},
+		{name: "percentage with decimal percent", op: Percentage, a: 12.5, b: 64, want: 8},
+		{name: "percentage above 100", op: Percentage, a: 150, b: 20, want: 30},
+		{name: "negative percentage", op: Percentage, a: -10, b: 50, want: -5},
+		{name: "zero percent", op: Percentage, a: 0, b: 5, want: 0},
+		{name: "percentage keeps float64 precision", op: Percentage, a: 7, b: 300, want: 21.000000000000004},
+		{name: "percentage has no intermediate overflow", op: Percentage, a: 200, b: 1e307, want: 2e307},
+		{name: "percentage overflow", op: Percentage, a: 1e308, b: 1e308, wantErr: ErrResultOutOfRange},
+
 		// overflow
 		{name: "add overflow", op: Add, a: math.MaxFloat64, b: math.MaxFloat64, wantErr: ErrResultOutOfRange},
 		{name: "multiply overflow", op: Multiply, a: 1e308, b: 10, wantErr: ErrResultOutOfRange},
@@ -68,5 +96,24 @@ func TestCalculate(t *testing.T) {
 				t.Errorf("Calculate(%q, %v, %v) = %v, want %v", tt.op, tt.a, tt.b, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsUnary(t *testing.T) {
+	tests := []struct {
+		op   Operation
+		want bool
+	}{
+		{op: Sqrt, want: true},
+		{op: Add, want: false},
+		{op: Power, want: false},
+		{op: Percentage, want: false},
+		{op: "modulo", want: false},
+	}
+
+	for _, tt := range tests {
+		if got := tt.op.IsUnary(); got != tt.want {
+			t.Errorf("Operation(%q).IsUnary() = %v, want %v", tt.op, got, tt.want)
+		}
 	}
 }

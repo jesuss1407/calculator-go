@@ -2,7 +2,7 @@
 
 A full-stack calculator: a **Go REST API** built only on the standard library, and a **React + TypeScript** frontend built with Vite.
 
-It supports addition, subtraction, multiplication and division. Both sides validate input, errors are clear, the form works from phone to desktop, and both apps have unit tests with coverage reports.
+It supports addition, subtraction, multiplication, division, powers, square roots and percentages. Both sides validate input, errors are clear, the form works from phone to desktop, and both apps have unit tests with coverage reports.
 
 ---
 
@@ -130,7 +130,7 @@ The final image is about **9 MB**. The binary serves the frontend because the im
 
 ### Using the app
 
-Enter two numbers, pick an operation and press **Calculate** or Enter. The **i** button next to the title lists the number formats that are accepted.
+Enter two numbers, pick an operation and press **Calculate** or Enter. Square root (√) needs only one number, so the second field is hidden while it's selected. The **i** button next to the title lists the number formats that are accepted.
 
 ---
 
@@ -163,32 +163,32 @@ npm run build         # type-check (tsc) + production bundle
 
 ### Coverage results
 
-These numbers were measured on 2026-09-24. Coverage is reported, not targeted: the tests concentrate on business rules and on every error a user or API client can trigger.
+These numbers were measured on 2026-09-25. Coverage is reported, not targeted: the tests concentrate on business rules and on every error a user or API client can trigger.
 
-**Backend** (52 test cases: 24 for `calculator`, 21 for `api`, 7 for `main`)
+**Backend** (86 test cases: 51 for `calculator`, 28 for `api`, 7 for `main`)
 
 | Package | Statements | Not covered |
 |---|---|---|
 | `internal/calculator` | 100.0% | — |
-| `internal/api` | 90.9% | The 500 fallback (no current error can reach it) and the log line for a failed response write |
+| `internal/api` | 92.3% | The 500 fallback (no current error can reach it) and the log line for a failed response write |
 | `main` | 38.1% | `newHandler`, the routing, is at 100%. `main()` itself (reading env vars, starting the server) is wiring and deliberately not unit-tested. |
-| **Total** | **76.5%** | |
+| **Total** | **80.7%** | |
 
-**Frontend** (42 tests in 4 files)
+**Frontend** (46 tests in 4 files)
 
 | File | Statements | Branches |
 |---|---|---|
-| `Calculator.tsx` | 100% | 85% |
+| `Calculator.tsx` | 100% | 88.46% |
 | `InfoPopover.tsx` | 100% | 100% |
 | `api.ts` | 100% | 100% |
 | `number.ts` | 100% | 100% |
-| **All files** | **100%** | **90.62%** |
+| **All files** | **100%** | **92.1%** |
 
-The three untested branches are in the submit handler. Two are the cases where only one field is invalid. The third is the fallback message for a thrown value that isn't an `Error`, which can't happen today because `api.ts` only throws `Error`s.
+The three untested branches are all in the submit handler: some combinations of which fields are invalid, and the fallback message for a thrown value that isn't an `Error`. That fallback can't happen today, because `api.ts` only throws `Error`s.
 
 ### Continuous integration
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to `main`, on every pull request, and on demand from the Actions tab. Three jobs run in parallel on Ubuntu, and each uses the same commands as above:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to `main`, on every pull request, and on demand from the Actions tab. The backend and frontend jobs run in parallel on Ubuntu. The Docker job starts only after both pass, so no time is spent building an image from code that fails its tests. Each job uses the same commands as above:
 
 | Job | Steps |
 |---|---|
@@ -215,12 +215,23 @@ Base URL: `http://localhost:8080`. Every response from the handlers has `Content
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `operation` | string | yes | One of `add`, `subtract`, `multiply`, `divide` (lowercase) |
+| `operation` | string | yes | One of the operations below (lowercase) |
 | `a` | number | yes | First operand |
-| `b` | number | yes | Second operand |
+| `b` | number | for every operation except `sqrt` | Second operand. For `sqrt` it must be left out. |
+
+| `operation` | Result | Operands |
+|---|---|---|
+| `add` | a + b | `a`, `b` |
+| `subtract` | a − b | `a`, `b` |
+| `multiply` | a × b | `a`, `b` |
+| `divide` | a ÷ b | `a`, `b` |
+| `power` | a raised to the power b | `a`, `b` |
+| `sqrt` | √a | `a` only |
+| `percentage` | a% of b, computed as `(a / 100) * b` | `a`, `b` |
 
 ```json
 { "operation": "divide", "a": 10, "b": 4 }
+{ "operation": "sqrt", "a": 16 }
 ```
 
 **Success: `200 OK`**
@@ -239,10 +250,12 @@ Base URL: `http://localhost:8080`. Every response from the handlers has `Content
 |---|---|---|
 | `400` | `request body must be a JSON object with operation, a and b` | Empty or malformed body, wrong types (`"a": "2"`), unknown fields, a number outside float64 range (`1e999`) |
 | `400` | `request body must contain a single JSON object` | Extra data after the JSON object, such as `{…}{}` |
-| `400` | `a and b are required` | `a` or `b` missing or `null` |
-| `400` | `unknown operation` | `operation` missing or not one of the four supported values |
-| `422` | `cannot divide by zero` | `b` is 0 in a division (including `0 / 0`) |
-| `422` | `result is out of range` | The result overflows float64, such as `1e308 * 10` |
+| `400` | `a and b are required` | `a` or `b` missing or `null`, for any operation except `sqrt` |
+| `400` | `sqrt takes only a` | `sqrt` without `a`, or with a `b` |
+| `400` | `unknown operation` | `operation` missing or not one of the supported values |
+| `422` | `cannot divide by zero` | `b` is 0 in a division (including `0 / 0`), or `0` raised to a negative power |
+| `422` | `result is not a real number` | The square root of a negative number, or a negative base with a fractional exponent, such as `(-4)^0.5` |
+| `422` | `result is out of range` | The result overflows float64, such as `1e308 * 10` or `10^400` |
 | `500` | `internal server error` | Unexpected failure (details are logged on the server) |
 | `405` | `Method Not Allowed` (plain text) | Wrong HTTP method, returned by Go's router |
 
@@ -275,9 +288,17 @@ More requests and the responses they return. Each was run against the running se
 |---|---|---|
 | `{"operation":"add","a":2,"b":3}` | 200 | `{"result":5}` |
 | `{"operation":"divide","a":10,"b":4}` | 200 | `{"result":2.5}` |
+| `{"operation":"power","a":2,"b":10}` | 200 | `{"result":1024}` |
+| `{"operation":"sqrt","a":2}` | 200 | `{"result":1.4142135623730951}` |
+| `{"operation":"percentage","a":10,"b":200}` | 200 | `{"result":20}` |
+| `{"operation":"percentage","a":7,"b":300}` | 200 | `{"result":21.000000000000004}` (the UI shows `21`) |
 | `{"operation":"divide","a":1,"b":0}` | 422 | `{"error":"cannot divide by zero"}` |
+| `{"operation":"power","a":0,"b":-1}` | 422 | `{"error":"cannot divide by zero"}` |
+| `{"operation":"sqrt","a":-4}` | 422 | `{"error":"result is not a real number"}` |
+| `{"operation":"power","a":-4,"b":0.5}` | 422 | `{"error":"result is not a real number"}` |
 | `{"operation":"multiply","a":1e308,"b":10}` | 422 | `{"error":"result is out of range"}` |
 | `{"operation":"add","a":1}` | 400 | `{"error":"a and b are required"}` |
+| `{"operation":"sqrt","a":16,"b":2}` | 400 | `{"error":"sqrt takes only a"}` |
 | `{"operation":"modulo","a":1,"b":2}` | 400 | `{"error":"unknown operation"}` |
 | `{"operation":` | 400 | `{"error":"request body must be a JSON object with operation, a and b"}` |
 | `{"operation":"add","a":1,"b":2}{}` | 400 | `{"error":"request body must contain a single JSON object"}` |
@@ -305,11 +326,11 @@ Browser                                        Go server
                                  calculate    └──────────────────────────────────────┘
 ```
 
-- **The math doesn't know about HTTP.** `internal/calculator` imports only `errors` and `math`. It exposes `Calculate(op, a, b) (float64, error)` and three sentinel errors. The HTTP layer maps those errors to status codes with `errors.Is`. The domain decides *what* went wrong; the handler decides *how* to report it.
+- **The math doesn't know about HTTP.** `internal/calculator` imports only `errors` and `math`. It exposes `Calculate(op, a, b) (float64, error)`, four sentinel errors and `Operation.IsUnary()`. The HTTP layer maps those errors to status codes with `errors.Is`. The domain decides *what* went wrong; the handler decides *how* to report it.
 - **No interfaces or mocks on the backend.** The calculator is pure and fast, so the handler tests call the real one. An interface that existed only for mocking would add indirection with no benefit.
 - **Standard library only.** Go 1.22+ routing patterns (`"POST /api/v1/calculate"`) provide method matching and automatic 405 responses, so no router framework is needed.
 - **The UI never calls `fetch`.** `api.ts` owns the URL, the request, a 5-second timeout and the translation of every failure into a message that's safe to show. That makes it the single seam the component tests mock.
-- **No abstractions ahead of need.** Four binary operations need no operation registry, no custom hook and no folder hierarchy. Each can be added when a second use appears.
+- **No abstractions ahead of need.** Seven operations still need no operation registry, no custom hook and no folder hierarchy. When square root added the first one-operand operation, one `IsUnary()` method was all the handler needed. Each abstraction can be added when a real need appears.
 
 ### API
 
@@ -320,11 +341,13 @@ Browser                                        Go server
 - **Results are always finite.** JSON can't represent Infinity or NaN; without a check, an overflow would produce a broken response. `Calculate` turns any non-finite result into `result is out of range`, whatever the inputs.
 - **A flat `{"error": "..."}` body.** Nothing needs machine-readable codes yet, and the status code already gives the category.
 - **A versioned path (`/api/v1`) and `GET /health`.** Both are cheap now and awkward to add later.
+- **Unary operations reject `b` rather than ignore it.** The domain says which operations use only `a` (`IsUnary`), and the handler enforces the matching JSON shape. A `b` sent with `sqrt` is almost certainly a client mistake, so it gets a 400, consistent with rejecting unknown fields. Adding `sqrt` changed none of the existing messages.
+- **Explicit domain errors instead of relying on NaN or Infinity.** `math.Pow` and `math.Sqrt` return NaN or ±Inf for undefined results. `Calculate` checks those cases first, so clients get a specific message: `0^-1` is a division by zero, and `√-4` or `(-4)^0.5` is "not a real number". A general "out of range" is left only for real overflow.
 
 ### Validation: who checks what
 
 - **Frontend: format.** `parseNumber` uses a strict pattern plus `Number.isFinite`. `Number()` alone is too lenient: `Number('')` is `0` and `Number('0x10')` is `16`. Invalid input never reaches the network.
-- **Backend: meaning.** Division by zero and overflow are only checked on the server, so those rules live in one place. The backend also validates the request shape itself and never assumes the client already did.
+- **Backend: meaning.** Division by zero, results that aren't real numbers, and overflow are only checked on the server, so those rules live in one place. The backend also validates the request shape itself and never assumes the client already did.
 
 ### Frontend
 
@@ -335,7 +358,8 @@ Browser                                        Go server
 - **Display rounding to 15 significant digits**, the precision spreadsheets use. `0.1 + 0.2` shows as `0.3`, and integers up to 15 digits display exactly. The API still returns the full float64 value.
 - **A help popup on the native Popover API.** The browser handles opening, closing with Esc or an outside click, and focus order, so the component has no state or effects. A test checks that every example in the popup agrees with `parseNumber`, so the help text can't drift from the real rules.
 - **Accessibility.** Labels are linked to inputs, fields get `aria-invalid` and `aria-describedby`, the result is announced through a live region and request errors use `role="alert"`. Operations are real radio buttons, so arrow keys work. Touch targets are at least 44 px.
-- **Responsive layout.** Mobile-first, a single column, a centered card on wide screens, and long results wrap rather than scroll sideways at 320 px.
+- **Square root hides the second field.** It isn't validated or sent either, and the first field's label changes from "First number" to "Number". Whatever was typed in the second field is kept for when another operation is chosen.
+- **Responsive layout.** Mobile-first, a single column, a centered card on wide screens, and long results wrap rather than scroll sideways at 320 px. The seven operation buttons sit in four columns: `+ − × ÷` on the first row and `xʸ √ %` on the second. That keeps each button at least 44 px wide even on a 320 px screen, with no media query.
 
 ### Docker
 
@@ -354,7 +378,10 @@ Browser                                        Go server
 
 ## Assumptions and known limitations
 
-- **Binary operations on real numbers only.** Each request is one operation on two operands. There is no expression parsing (`2 + 3 × 4`).
+- **One operation per request, on real numbers only.** Each request is one operation on one or two operands. There is no expression parsing (`2 + 3 × 4`) and no complex numbers.
+- **Percentage means "a% of b"** and is computed as `(a / 100) * b`. It's an ordinary two-operand operation, so it needed no change to the request shape. The formula keeps plain floating-point behavior: `7% of 300` returns `21.000000000000004` from the API, while the UI's display rounding shows `21`. That matches how `0.1 + 0.2` behaves. Dividing first also means `a * b` never overflows when the result itself fits: `200% of 1e307` returns `2e+307`.
+- **Power follows `math.Pow` conventions.** `0^0` is `1`. A negative base with a fractional exponent is rejected even when a real answer exists. For example, `(-8)^(1/3)` returns "not a real number" rather than `-2`, because `1/3` can't be represented exactly and the principal value is complex.
+- **The frontend knows which operation is unary.** `Calculator.tsx` hides the second field when `sqrt` is selected. That duplicates the backend's `IsUnary()`, which is acceptable for one operation; an operations endpoint would be the fix if the list grew.
 - **IEEE 754 float64 precision.** The API returns `0.1 + 0.2` as `0.30000000000000004`, and integers above 2^53 lose precision. The UI rounds only for display.
 - **Negative zero.** A result such as `0 × -1` comes back as `{"result":-0}`. That's valid JSON, and the UI displays it as `0`.
 - **Operation names are case-sensitive** (`"ADD"` is rejected). JSON *field names* follow Go's `encoding/json` default of case-insensitive matching, so `"A"` is accepted as `a`.
@@ -368,7 +395,6 @@ Browser                                        Go server
 
 These were deliberately left out to keep the first version small:
 
-- **More operations:** power, square root and percentage. `b` would become optional for unary operations, and the UI would hide the second field.
-- **More domain handling:** negative-zero normalization, and domain errors such as the square root of a negative number.
+- **Negative-zero normalization,** so that results such as `0 × -1` come back as `0` instead of `-0`.
 - **Server hardening:** a request body size limit, `http.Server` timeouts and graceful shutdown. `main.go` currently uses plain `http.ListenAndServe`. That's fine for local use and the demo container, but not for internet-facing production.
 - **Browser end-to-end tests:** a Playwright test that fills in the form in a real browser. It could run in the Docker CI job against the container that's already started there.

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type SubmitEvent } from 'react'
 import { calculate, type Operation } from './api'
 import { InfoPopover } from './InfoPopover'
 import { formatNumber, parseNumber } from './number'
@@ -8,6 +8,9 @@ const OPERATIONS: { value: Operation; label: string; symbol: string }[] = [
   { value: 'subtract', label: 'Subtract', symbol: '−' },
   { value: 'multiply', label: 'Multiply', symbol: '×' },
   { value: 'divide', label: 'Divide', symbol: '÷' },
+  { value: 'power', label: 'Power', symbol: 'xʸ' },
+  { value: 'sqrt', label: 'Square root', symbol: '√' },
+  { value: 'percentage', label: 'Percent of', symbol: '%' },
 ]
 
 type Operand = 'a' | 'b'
@@ -37,19 +40,22 @@ export function Calculator() {
     setStatus({ kind: 'idle' })
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  // Square root uses only the first number: the second field is hidden, not validated and not sent.
+  const isUnary = operation === 'sqrt'
+
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const a = parseNumber(operands.a)
-    const b = parseNumber(operands.b)
-    if (!a.ok || !b.ok) {
-      setFieldErrors({ a: a.ok ? undefined : a.error, b: b.ok ? undefined : b.error })
+    const b = isUnary ? null : parseNumber(operands.b)
+    if (!a.ok || b?.ok === false) {
+      setFieldErrors({ a: a.ok ? undefined : a.error, b: b?.ok === false ? b.error : undefined })
       return
     }
 
     setStatus({ kind: 'loading' })
     try {
-      const result = await calculate(operation, a.value, b.value)
+      const result = await calculate(operation, a.value, b?.value)
       setStatus({ kind: 'success', result })
     } catch (error) {
       setStatus({ kind: 'error', message: error instanceof Error ? error.message : 'Something went wrong.' })
@@ -70,7 +76,7 @@ export function Calculator() {
         <fieldset className="controls" disabled={isLoading}>
           <NumberField
             id="a"
-            label="First number"
+            label={isUnary ? 'Number' : 'First number'}
             value={operands.a}
             error={fieldErrors.a}
             onChange={(value) => handleOperandChange('a', value)}
@@ -97,13 +103,15 @@ export function Calculator() {
             </div>
           </fieldset>
 
-          <NumberField
-            id="b"
-            label="Second number"
-            value={operands.b}
-            error={fieldErrors.b}
-            onChange={(value) => handleOperandChange('b', value)}
-          />
+          {!isUnary && (
+            <NumberField
+              id="b"
+              label="Second number"
+              value={operands.b}
+              error={fieldErrors.b}
+              onChange={(value) => handleOperandChange('b', value)}
+            />
+          )}
 
           <button type="submit" className="submit">
             {isLoading ? 'Calculating…' : 'Calculate'}

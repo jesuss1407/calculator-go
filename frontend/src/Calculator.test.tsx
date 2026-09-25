@@ -50,6 +50,34 @@ describe('Calculator', () => {
     expect(calculateMock).toHaveBeenCalledWith('add', 0.1, 0.2)
   })
 
+  it('hides the second number for square root and sends only the first', async () => {
+    calculateMock.mockResolvedValue(4)
+    const user = userEvent.setup()
+    render(<Calculator />)
+
+    await user.type(screen.getByLabelText('First number'), '16')
+    await user.click(screen.getByRole('radio', { name: 'Square root' }))
+    expect(screen.queryByLabelText('Second number')).not.toBeInTheDocument()
+
+    await user.click(submitButton())
+
+    expect(await screen.findByText('4')).toBeInTheDocument()
+    expect(calculateMock).toHaveBeenCalledWith('sqrt', 16, undefined)
+  })
+
+  it.each([
+    { label: 'Power', operation: 'power', a: '2', b: '10', result: 1024 },
+    { label: 'Percent of', operation: 'percentage', a: '10', b: '200', result: 20 },
+  ])('sends both numbers for $label', async ({ label, operation, a, b, result }) => {
+    calculateMock.mockResolvedValue(result)
+    const user = await renderAndFill(a, label, b)
+
+    await user.click(submitButton())
+
+    expect(await screen.findByText(String(result))).toBeInTheDocument()
+    expect(calculateMock).toHaveBeenCalledWith(operation, Number(a), Number(b))
+  })
+
   it('shows the error message from the API', async () => {
     calculateMock.mockRejectedValue(new Error('cannot divide by zero'))
     const user = await renderAndFill('1', 'Divide', '0')

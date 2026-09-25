@@ -47,18 +47,30 @@ func handleCalculate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "request body must contain a single JSON object")
 		return
 	}
-	if req.A == nil || req.B == nil {
+	op := calculator.Operation(req.Operation)
+	switch {
+	case op.IsUnary() && (req.A == nil || req.B != nil):
+		writeError(w, http.StatusBadRequest, string(op)+" takes only a")
+		return
+	case !op.IsUnary() && (req.A == nil || req.B == nil):
 		writeError(w, http.StatusBadRequest, "a and b are required")
 		return
 	}
 
-	result, err := calculator.Calculate(calculator.Operation(req.Operation), *req.A, *req.B)
+	var b float64
+	if req.B != nil {
+		b = *req.B
+	}
+
+	result, err := calculator.Calculate(op, *req.A, b)
 	switch {
 	case err == nil:
 		writeJSON(w, http.StatusOK, calculateResponse{Result: result})
 	case errors.Is(err, calculator.ErrUnknownOperation):
 		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, calculator.ErrDivisionByZero), errors.Is(err, calculator.ErrResultOutOfRange):
+	case errors.Is(err, calculator.ErrDivisionByZero),
+		errors.Is(err, calculator.ErrNotRealNumber),
+		errors.Is(err, calculator.ErrResultOutOfRange):
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 	default:
 		log.Printf("calculate: unexpected error: %v", err)

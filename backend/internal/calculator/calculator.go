@@ -12,20 +12,29 @@ type Operation string
 
 // Supported operations.
 const (
-	Add      Operation = "add"
-	Subtract Operation = "subtract"
-	Multiply Operation = "multiply"
-	Divide   Operation = "divide"
+	Add        Operation = "add"
+	Subtract   Operation = "subtract"
+	Multiply   Operation = "multiply"
+	Divide     Operation = "divide"
+	Power      Operation = "power"
+	Sqrt       Operation = "sqrt"
+	Percentage Operation = "percentage"
 )
 
 // Errors returned by Calculate. Compare them with errors.Is.
 var (
 	ErrUnknownOperation = errors.New("unknown operation")
 	ErrDivisionByZero   = errors.New("cannot divide by zero")
+	ErrNotRealNumber    = errors.New("result is not a real number")
 	ErrResultOutOfRange = errors.New("result is out of range")
 )
 
-// Calculate applies op to a and b.
+// IsUnary reports whether op uses only the first operand.
+func (op Operation) IsUnary() bool {
+	return op == Sqrt
+}
+
+// Calculate applies op to a and b. Unary operations ignore b.
 // On success the result is always a finite number; on error it is 0.
 func Calculate(op Operation, a, b float64) (float64, error) {
 	var result float64
@@ -42,6 +51,22 @@ func Calculate(op Operation, a, b float64) (float64, error) {
 			return 0, ErrDivisionByZero
 		}
 		result = a / b
+	case Power:
+		switch {
+		case a == 0 && b < 0:
+			return 0, ErrDivisionByZero // 0 to a negative power is 1 / 0
+		case a < 0 && b != math.Trunc(b):
+			return 0, ErrNotRealNumber // e.g. (-4)^0.5 has no real value
+		}
+		result = math.Pow(a, b)
+	case Sqrt:
+		if a < 0 {
+			return 0, ErrNotRealNumber
+		}
+		result = math.Sqrt(a)
+	case Percentage:
+		// a% of b. Dividing first also keeps a*b from overflowing when the result itself fits.
+		result = (a / 100) * b
 	default:
 		return 0, ErrUnknownOperation
 	}

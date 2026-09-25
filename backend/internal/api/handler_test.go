@@ -20,6 +20,7 @@ func TestCalculate(t *testing.T) {
 		invalidBody    = `{"error":"request body must be a JSON object with operation, a and b"}`
 		multipleValues = `{"error":"request body must contain a single JSON object"}`
 		missingOperand = `{"error":"a and b are required"}`
+		sqrtOperands   = `{"error":"sqrt takes only a"}`
 		unknownOp      = `{"error":"unknown operation"}`
 	)
 
@@ -34,6 +35,10 @@ func TestCalculate(t *testing.T) {
 		{name: "subtract", body: `{"operation":"subtract","a":10,"b":4}`, wantStatus: http.StatusOK, wantBody: `{"result":6}`},
 		{name: "multiply", body: `{"operation":"multiply","a":3,"b":4}`, wantStatus: http.StatusOK, wantBody: `{"result":12}`},
 		{name: "divide", body: `{"operation":"divide","a":10,"b":4}`, wantStatus: http.StatusOK, wantBody: `{"result":2.5}`},
+		{name: "power", body: `{"operation":"power","a":2,"b":10}`, wantStatus: http.StatusOK, wantBody: `{"result":1024}`},
+		{name: "sqrt takes only a", body: `{"operation":"sqrt","a":16}`, wantStatus: http.StatusOK, wantBody: `{"result":4}`},
+		{name: "percentage", body: `{"operation":"percentage","a":10,"b":200}`, wantStatus: http.StatusOK, wantBody: `{"result":20}`},
+		{name: "percentage requires b", body: `{"operation":"percentage","a":10}`, wantStatus: http.StatusBadRequest, wantBody: missingOperand},
 		{name: "zero is a valid operand", body: `{"operation":"add","a":0,"b":0}`, wantStatus: http.StatusOK, wantBody: `{"result":0}`},
 		{name: "trailing whitespace is allowed", body: "{\"operation\":\"add\",\"a\":2,\"b\":3}\n", wantStatus: http.StatusOK, wantBody: `{"result":5}`},
 
@@ -49,12 +54,15 @@ func TestCalculate(t *testing.T) {
 		// missing or invalid fields
 		{name: "missing b", body: `{"operation":"add","a":2}`, wantStatus: http.StatusBadRequest, wantBody: missingOperand},
 		{name: "null a", body: `{"operation":"add","a":null,"b":3}`, wantStatus: http.StatusBadRequest, wantBody: missingOperand},
+		{name: "sqrt with b", body: `{"operation":"sqrt","a":16,"b":2}`, wantStatus: http.StatusBadRequest, wantBody: sqrtOperands},
+		{name: "sqrt without a", body: `{"operation":"sqrt"}`, wantStatus: http.StatusBadRequest, wantBody: sqrtOperands},
 		{name: "missing operation", body: `{"a":2,"b":3}`, wantStatus: http.StatusBadRequest, wantBody: unknownOp},
 		{name: "unknown operation", body: `{"operation":"modulo","a":2,"b":3}`, wantStatus: http.StatusBadRequest, wantBody: unknownOp},
 
 		// valid request, but the math has no answer
 		{name: "division by zero", body: `{"operation":"divide","a":1,"b":0}`, wantStatus: http.StatusUnprocessableEntity, wantBody: `{"error":"cannot divide by zero"}`},
 		{name: "result out of range", body: `{"operation":"multiply","a":1e308,"b":10}`, wantStatus: http.StatusUnprocessableEntity, wantBody: `{"error":"result is out of range"}`},
+		{name: "sqrt of negative", body: `{"operation":"sqrt","a":-4}`, wantStatus: http.StatusUnprocessableEntity, wantBody: `{"error":"result is not a real number"}`},
 	}
 
 	for _, tt := range tests {

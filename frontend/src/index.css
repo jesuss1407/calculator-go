@@ -186,7 +186,8 @@ legend,
   color: var(--color-error);
 }
 
-/* Operation picker: native radio buttons styled as a row of buttons. */
+/* Operation picker: native radio buttons styled as buttons. Four columns give two rows
+   (+ − × ÷ / xʸ √ %) and keep every button at least 44px wide, even on a 320px screen. */
 .operations {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
