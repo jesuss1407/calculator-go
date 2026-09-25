@@ -24,8 +24,12 @@ It supports addition, subtraction, multiplication and division. Both sides valid
 
 ```
 calculator-go/
+├── .github/workflows/ci.yml         GitHub Actions: lint, test, coverage, build, and a Docker smoke test
+├── Dockerfile                       One image that serves the frontend and the API together
+├── .dockerignore
 ├── backend/                         Go module, no third-party dependencies
-│   ├── main.go                      Wiring: reads PORT, starts the HTTP server
+│   ├── main.go                      Wiring: reads PORT and STATIC_DIR, starts the HTTP server
+│   ├── main_test.go                 Routing when the built frontend is served too
 │   └── internal/
 │       ├── calculator/              Pure arithmetic, no HTTP or JSON
 │       │   ├── calculator.go
@@ -53,8 +57,9 @@ calculator-go/
 |---|---|---|
 | [Go](https://go.dev/dl/) | 1.27 or later | `go.mod` declares `go 1.27.0`. With Go 1.21 or later and the default `GOTOOLCHAIN=auto`, the required toolchain downloads automatically. |
 | [Node.js](https://nodejs.org/) | 20.19+ or 22.12+ | Required by Vite 8. npm comes with Node. |
+| [Docker](https://docs.docker.com/get-docker/) | Any recent version | Optional. Only needed to [run everything in one container](#option-b-docker-one-container); then Go and Node aren't needed at all. |
 
-Developed and tested with Go 1.27.0 and Node 25.8.1 on Windows 11.
+Developed and tested with Go 1.27.0, Node 25.8.1 and Docker 29.8 on Windows 11.
 
 ---
 
@@ -72,6 +77,13 @@ npm install
 ---
 
 ## Running the app
+
+There are two ways to run it:
+
+- **Option A: development servers.** Two terminals, with hot reload. Use this while working on the code.
+- **Option B: Docker.** One command, one container. Use this to try the app without installing Go or Node.
+
+### Option A: development servers
 
 Run the backend and the frontend in two terminals.
 
@@ -93,7 +105,32 @@ npm run dev
 
 Open **http://localhost:5173**. The Vite dev server forwards every `/api` request to the backend, so the browser only ever talks to one origin and no CORS setup is needed.
 
-To use the app, enter two numbers, pick an operation and press **Calculate** or Enter. The **i** button next to the title lists the number formats that are accepted.
+### Option B: Docker (one container)
+
+From the repository root:
+
+```bash
+docker build -t calculator .
+docker run --rm -p 8080:8080 calculator
+```
+
+Open **http://localhost:8080**. This one address serves both the page and the API. The curl examples below work against it unchanged. Press Ctrl+C, or run `docker stop`, to shut it down.
+
+To publish it on a different host port, change only the left-hand number: `-p 3000:8080` serves the app at http://localhost:3000. Do this if port 8080 is already taken, for example by `go run .` from Option A.
+
+**How the image is built.** The [Dockerfile](Dockerfile) has three stages:
+
+| Stage | Base image | What it does |
+|---|---|---|
+| `frontend` | `node:24-alpine` | `npm ci`, then `npm run build`, which type-checks and bundles into `dist/` |
+| `backend` | `golang:1.27-alpine` | Compiles a static Go binary (`CGO_ENABLED=0`) |
+| runtime | `gcr.io/distroless/static-debian13:nonroot` | Holds only the binary and the built `dist/` files. It runs as a non-root user and has no shell or package manager. |
+
+The final image is about **9 MB**. The binary serves the frontend because the image sets `STATIC_DIR=/app/public`. When `STATIC_DIR` is unset, as in Option A, it serves only the API.
+
+### Using the app
+
+Enter two numbers, pick an operation and press **Calculate** or Enter. The **i** button next to the title lists the number formats that are accepted.
 
 ---
 
@@ -112,7 +149,7 @@ go tool cover -func coverage.out                       # per-function summary
 go tool cover -html coverage.out -o coverage.html      # optional browsable report
 ```
 
-> The flags use the space-separated form (`-coverprofile coverage.out`) on purpose. PowerShell splits an unquoted `-flag=name.ext` at the dot, so the `=` form breaks there, while the space form works the same in every shell.
+> The flags use the space-separated form (`-coverprofile coverage.out`) on purpose.
 
 ### Frontend
 
@@ -128,14 +165,14 @@ npm run build         # type-check (tsc) + production bundle
 
 These numbers were measured on 2026-09-24. Coverage is reported, not targeted: the tests concentrate on business rules and on every error a user or API client can trigger.
 
-**Backend** (45 test cases: 24 for `calculator`, 21 for `api`)
+**Backend** (52 test cases: 24 for `calculator`, 21 for `api`, 7 for `main`)
 
 | Package | Statements | Not covered |
 |---|---|---|
 | `internal/calculator` | 100.0% | — |
 | `internal/api` | 90.9% | The 500 fallback (no current error can reach it) and the log line for a failed response write |
-| `main` | 0.0% | Wiring only, deliberately not unit-tested |
-| **Total** | **83.0%** | |
+| `main` | 38.1% | `newHandler`, the routing, is at 100%. `main()` itself (reading env vars, starting the server) is wiring and deliberately not unit-tested. |
+| **Total** | **76.5%** | |
 
 **Frontend** (42 tests in 4 files)
 
@@ -148,6 +185,23 @@ These numbers were measured on 2026-09-24. Coverage is reported, not targeted: t
 | **All files** | **100%** | **90.62%** |
 
 The three untested branches are in the submit handler. Two are the cases where only one field is invalid. The third is the fallback message for a thrown value that isn't an `Error`, which can't happen today because `api.ts` only throws `Error`s.
+
+### Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to `main`, on every pull request, and on demand from the Actions tab. Three jobs run in parallel on Ubuntu, and each uses the same commands as above:
+
+| Job | Steps |
+|---|---|
+| **Backend (Go)** | `gofmt` check → `go vet` → `go test` with coverage → coverage summary |
+| **Frontend (React)** | `npm ci` → `npm run lint` → `npm run coverage` → `npm run build` |
+| **Docker image** | `docker build` → start the container → smoke test: `GET /health`, the page is served, and `2 + 3` returns `{"result":5}` |
+
+- **Toolchains:** the Go version comes from `backend/go.mod`, so CI and local development can't drift apart. The frontend job uses Node 24 LTS with the npm cache enabled.
+- **Coverage:** the backend and frontend jobs write their coverage tables to the run's summary page. Coverage is reported but never used as a pass/fail gate.
+- **Why a smoke test and not just a build:** an image can build but still not work, for example if the server can't find the frontend files. The smoke test runs the real container and fails on any unexpected response. The container's logs are printed either way, so a failure is easy to diagnose.
+- **Permissions:** the workflow only has read access to the repository.
+
+> **Windows note:** with Git's default `core.autocrlf=true`, a local `gofmt -l` can list files only because the working copy has CRLF line endings. CI checks out LF, so those files still pass there.
 
 ---
 
@@ -283,6 +337,13 @@ Browser                                        Go server
 - **Accessibility.** Labels are linked to inputs, fields get `aria-invalid` and `aria-describedby`, the result is announced through a live region and request errors use `role="alert"`. Operations are real radio buttons, so arrow keys work. Touch targets are at least 44 px.
 - **Responsive layout.** Mobile-first, a single column, a centered card on wide screens, and long results wrap rather than scroll sideways at 320 px.
 
+### Docker
+
+- **One image, one process, one port.** Instead of separate frontend and backend containers (for example nginx and Go wired together with docker-compose), the Go binary also serves the built frontend. The page and the API share an origin, so the relative `/api/v1/calculate` URL works as it does in development, with no proxy and no CORS.
+- **Opt-in static serving.** `main.go` serves files only when `STATIC_DIR` is set. That keeps the `api` package unchanged and local development identical. The routing lives in `newHandler`, and `main_test.go` checks that static files never shadow `/api/...` or `/health`.
+- **A multi-stage build.** Node and the Go toolchain exist only in the build stages. The runtime image is distroless and runs as a non-root user, about 9 MB in total.
+- **Build-cache friendly.** `package.json` and `package-lock.json` are copied before the source, so `npm ci` only reruns when dependencies change. `.dockerignore` keeps host `node_modules` out of the build, because those contain native binaries for the host platform, not Linux.
+
 ### Tooling
 
 - **Vitest + React Testing Library.** Tests mock `api.ts` at the module boundary rather than using a network-mocking library, which saves a dependency and leaves the seam easy to see.
@@ -297,7 +358,7 @@ Browser                                        Go server
 - **IEEE 754 float64 precision.** The API returns `0.1 + 0.2` as `0.30000000000000004`, and integers above 2^53 lose precision. The UI rounds only for display.
 - **Negative zero.** A result such as `0 × -1` comes back as `{"result":-0}`. That's valid JSON, and the UI displays it as `0`.
 - **Operation names are case-sensitive** (`"ADD"` is rejected). JSON *field names* follow Go's `encoding/json` default of case-insensitive matching, so `"A"` is accepted as `a`.
-- **Local development setup.** There is no authentication, persistence, rate limiting or CORS configuration. The frontend reaches the API through the Vite dev proxy.
+- **Not production-hardened.** There is no authentication, persistence, rate limiting or CORS configuration. The frontend reaches the API through the Vite dev proxy (Option A) or from the same origin (Docker). The container has no Docker `HEALTHCHECK`, because the distroless image has no shell or curl to run one. `GET /health` exists for an orchestrator to probe instead.
 - **Modern browsers.** The help popup needs the Popover API (Chrome 114+, Firefox 125+, Safari 17+). The calculator itself works without it.
 - **iPhone keypad.** The keypad iOS shows for `inputMode="decimal"` has only digits and a decimal point, with no minus sign and no `e`. On an iPhone, negative numbers and scientific notation can only be pasted. Desktop browsers and Android keyboards are not affected.
 
@@ -309,5 +370,5 @@ These were deliberately left out to keep the first version small:
 
 - **More operations:** power, square root and percentage. `b` would become optional for unary operations, and the UI would hide the second field.
 - **More domain handling:** negative-zero normalization, and domain errors such as the square root of a negative number.
-- **Server hardening:** a request body size limit, `http.Server` timeouts and graceful shutdown. `main.go` currently uses plain `http.ListenAndServe`, which is fine locally but not for production.
-- **Delivery:** Docker and docker-compose, CI running both test suites, and a Playwright end-to-end smoke test.
+- **Server hardening:** a request body size limit, `http.Server` timeouts and graceful shutdown. `main.go` currently uses plain `http.ListenAndServe`. That's fine for local use and the demo container, but not for internet-facing production.
+- **Browser end-to-end tests:** a Playwright test that fills in the form in a real browser. It could run in the Docker CI job against the container that's already started there.

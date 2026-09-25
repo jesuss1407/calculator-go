@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # An explicit bash shell adds -o pipefail, so a failing command in a pipe fails the step.
+        shell: bash
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          # Standard library only: there is no go.sum for the module cache to key on.
+          cache: false
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with coverage
+        run: go test ./... -coverprofile coverage.out
+
+      - name: Coverage summary
+        run: |
+          go tool cover -func coverage.out
+          {
+            echo '### Backend coverage'
+            echo '```'
+            go tool cover -func coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  frontend:
+    name: Frontend (React)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test with coverage
+        run: npm run coverage | tee coverage.txt
+
+      - name: Coverage summary
+        run: |
+          {
+            echo '### Frontend coverage'
+            echo '```'
+            sed -n '/% Coverage report/,$p' coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Type-check and build
+        run: npm run build
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -t calculator .
+
+      - name: Smoke test the container
+        run: |
+          docker run -d --rm --name calculator -p 8080:8080 calculator
+
+          # Always print logs and clean up the container.
+          trap 'docker logs calculator 2>/dev/null || true; docker rm -f calculator >/dev/null 2>&1 || true' EXIT
+
+          # Wait for the server to become ready.
+          curl -sf \
+            --retry 10 \
+            --retry-connrefused \
+            --retry-delay 1 \
+            http://localhost:8080/health
+          echo
+
+          # Verify that the built frontend is being served.
+          page=$(curl -sf http://localhost:8080/)
+          grep -q '<title>Calculator</title>' <<< "$page"
+          echo "page: served"
+
+          # Verify one end-to-end API calculation.
+          result=$(curl -sf \
+            -X POST http://localhost:8080/api/v1/calculate \
+            -H 'Content-Type: application/json' \
+            -d '{"operation":"add","a":2,"b":3}')
+
+          echo "calculate: $result"
+          test "$result" = '{"result":5}'

@@ -1,0 +1,13 @@
+# Never send host-installed dependencies into the build: node_modules from
+# Windows or macOS contains native binaries for the wrong platform.
+**/node_modules
+
+# Build output and reports are regenerated inside the image.
+frontend/dist
+frontend/coverage
+backend/coverage.out
+backend/coverage.html
+
+# Not needed to build the image.
+.git
+.github
